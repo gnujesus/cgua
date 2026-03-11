@@ -3,6 +3,7 @@
 
 #include <netdb.h>
 #include <string>
+#include <sys/socket.h>
 #include <vector>
 
 namespace Cgua {
@@ -26,6 +27,16 @@ namespace Cgua {
 								 "\r\n" +
 								 body;
 			}
+	};
+
+	class App {
+	public:
+		App(): _listen_sockfd(-1){}
+		void listen(std::string port);
+
+	private: 
+		int _listen_sockfd;
+		void start_loop();
 	};
 }
 
