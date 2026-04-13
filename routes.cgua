@@ -1,0 +1,4 @@
+@get("/users")
+@post("/users")
+@put("/users/:id")
+@delete("/users/:id")
