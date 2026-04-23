@@ -23,11 +23,17 @@ void Scanner::skipWhitespace() {
 
 std::string Scanner::leerString() {
     std::string val;
+    // IA
+    int startLine = line;
     while (!isAtEnd() && peek() != '"') {
         if (peek() == '\n') ++line;
         val += advance();
     }
-    if (!isAtEnd()) advance(); // consume closing "
+    // IA
+    if (isAtEnd())
+        throw std::runtime_error(
+            "Linea " + std::to_string(startLine) + ": string literal sin cerrar");
+    advance(); // consume closing "
     return val;
 }
 
@@ -59,6 +65,8 @@ std::string Scanner::leerParamsRaw() {
     int  depth    = 0;
     bool inString = false;
     bool escaped  = false;
+    // IA
+    bool found    = false;
 
     while (!isAtEnd()) {
         char c = advance();
@@ -85,13 +93,18 @@ std::string Scanner::leerParamsRaw() {
             depth++;
             result += c;
         } else if (c == ')') {
-            if (depth == 0) break; // matching ')' found — consume, don't add
+            // IA
+            if (depth == 0) { found = true; break; }
             depth--;
             result += c;
         } else {
             result += c;
         }
     }
+    // IA
+    if (!found)
+        throw std::runtime_error(
+            "Linea " + std::to_string(line) + ": lista de parametros sin cerrar ')'");
     return result;
 }
 
@@ -107,6 +120,8 @@ std::string Scanner::leerBodyRaw() {
     int  depth    = 0;
     bool inString = false;
     bool escaped  = false;
+    // IA
+    bool found    = false;
 
     while (!isAtEnd()) {
         char c = advance();
@@ -133,13 +148,18 @@ std::string Scanner::leerBodyRaw() {
             depth++;
             result += c;
         } else if (c == '}') {
-            if (depth == 0) break; // matching '}' found — consume, don't add
+            // IA
+            if (depth == 0) { found = true; break; }
             depth--;
             result += c;
         } else {
             result += c;
         }
     }
+    // IA
+    if (!found)
+        throw std::runtime_error(
+            "Linea " + std::to_string(line) + ": cuerpo de funcion sin cerrar '}'");
     return result;
 }
 
@@ -216,8 +236,9 @@ Token TokenStream::getNextToken() {
 // ─────────────────────────────────────────────────────────────────────────────
 // ParallelLexer — static DP table
 // ─────────────────────────────────────────────────────────────────────────────
-ParallelLexer::CharClass ParallelLexer::charTable[256];
-bool                     ParallelLexer::tableReady = false;
+ParallelLexer::CharClass  ParallelLexer::charTable[256];
+// IA
+std::once_flag            ParallelLexer::tableOnce;
 
 void ParallelLexer::buildTable() {
     for (int i = 0; i < 256; ++i) charTable[i] = CC_OTHER;
@@ -240,12 +261,11 @@ void ParallelLexer::buildTable() {
     charTable[static_cast<unsigned char>('}')] = CC_RBRACE;
     charTable[static_cast<unsigned char>(':')] = CC_COLON;
     charTable[static_cast<unsigned char>(',')] = CC_COMMA;
-
-    tableReady = true;
 }
 
 ParallelLexer::ParallelLexer(const std::string& filepath) {
-    if (!tableReady) buildTable();
+    // IA
+    std::call_once(tableOnce, buildTable);
 
     std::ifstream file(filepath, std::ios::binary | std::ios::ate);
     if (!file.is_open())
@@ -293,14 +313,18 @@ std::vector<Token> ParallelLexer::scanRange(std::size_t from,
                 break;
             }
             case CC_QUOTE: {
-                ++i;
-                std::size_t start = i;
-                while (i < to && charTable[static_cast<unsigned char>(buffer[i])] != CC_QUOTE) {
-                    if (charTable[static_cast<unsigned char>(buffer[i])] == CC_NEWLINE) ++line;
-                    ++i;
+                ++i; // skip opening "
+                // IA
+                std::string val;
+                bool        esc = false;
+                while (i < to) {
+                    unsigned char uc = static_cast<unsigned char>(buffer[i]);
+                    if (esc) { val += buffer[i++]; esc = false; continue; }
+                    if (buffer[i] == '\\') { val += buffer[i++]; esc = true; continue; }
+                    if (charTable[uc] == CC_NEWLINE) ++line;
+                    if (charTable[uc] == CC_QUOTE)  { ++i; break; }
+                    val += buffer[i++];
                 }
-                std::string val(buffer.data() + start, i - start);
-                if (i < to) ++i;
                 tokens.push_back({TokenType::STRING, std::move(val), line});
                 break;
             }
@@ -340,13 +364,20 @@ std::vector<Token> ParallelLexer::tokenize() {
     if (buffer.empty())
         return {{TokenType::FIN_DE_ARCHIVO, "", 1}};
 
-    std::size_t mid   = buffer.size() / 2;
-    bool        inStr = false;
+    std::size_t mid     = buffer.size() / 2;
+    // IA
+    bool        inStr   = false;
+    bool        escaped = false;
 
-    for (std::size_t k = 0; k < mid; ++k)
-        if (buffer[k] == '"') inStr = !inStr;
+    for (std::size_t k = 0; k < mid; ++k) {
+        if (escaped)                    { escaped = false; continue; }
+        if (buffer[k] == '\\' && inStr) { escaped = true;  continue; }
+        if (buffer[k] == '"')           inStr = !inStr;
+    }
 
     while (mid < buffer.size()) {
+        if (escaped)                         { escaped = false; ++mid; continue; }
+        if (buffer[mid] == '\\' && inStr)    { escaped = true;  ++mid; continue; }
         if (buffer[mid] == '"') inStr = !inStr;
         if (!inStr) {
             CharClass cc = charTable[static_cast<unsigned char>(buffer[mid])];

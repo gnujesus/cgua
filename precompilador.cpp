@@ -7,7 +7,11 @@
 #include "ast.h"
 #include "codegen.h"
 
+// argc - argument count
+// argv - argument vector
 int main(int argc, char* argv[]) {
+
+    // check if there are arguments, if not, take the default arguments
     std::string inputFile  = (argc > 1) ? argv[1] : "routes.cgua";
     std::string outputFile = (argc > 2) ? argv[2] : "routes_generated.hpp";
 

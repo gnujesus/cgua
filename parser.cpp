@@ -94,10 +94,11 @@ RouteNode Parser::parseDecoradorRuta() {
     Token metodoTok = consume(TokenType::IDENTIFICADOR,
                               "Se esperaba el nombre del metodo HTTP");
     if (!esMetodoValido(metodoTok.valor)) {
+        // IA
         throw std::runtime_error(
             "Error en linea " + std::to_string(metodoTok.linea) +
             ": metodo HTTP invalido '" + metodoTok.valor +
-            "'. Metodos validos: get, post, put, delete, patch"
+            "'. Metodos validos (en minusculas): get, post, put, delete, patch"
         );
     }
 
@@ -139,6 +140,14 @@ RouteNode Parser::parseDecoradorRuta() {
 
     std::string funcName   = sigTokens[funcNameIdx].second;
     std::string returnType = reconstructType(sigTokens, funcNameIdx);
+
+    // IA
+    if (returnType.empty())
+        throw std::runtime_error(
+            "Falta tipo de retorno para la funcion '" + funcName +
+            "' en la ruta '" + rutaTok.valor + "'. " +
+            "Sintaxis esperada: tipo_retorno nombre_funcion(params)"
+        );
 
     // ── 4. Raw params ─────────────────────────────────────────────────────────
     // current == PAR_IZQ  →  the stream is positioned right after '('.

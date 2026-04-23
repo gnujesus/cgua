@@ -3,10 +3,24 @@
 #include <cctype>
 #include <fstream>
 #include <stdexcept>
+// IA
+#include <unordered_set>
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────────
+// IA
+static std::string escapeForStringLiteral(const std::string& s) {
+    std::string out;
+    out.reserve(s.size());
+    for (char c : s) {
+        if (c == '"')       out += "\\\"";
+        else if (c == '\\') out += "\\\\";
+        else                out += c;
+    }
+    return out;
+}
+
 static std::string toUpper(std::string s) {
     std::transform(s.begin(), s.end(), s.begin(),
                    [](unsigned char c) { return static_cast<char>(std::toupper(c)); });
@@ -41,6 +55,15 @@ static std::string toUpper(std::string s) {
 //   route_count             — constexpr number of routes
 // ─────────────────────────────────────────────────────────────────────────────
 std::string CodeGen::generate(const std::vector<RouteNode>& routes) {
+    // IA
+    std::unordered_set<std::string> seenNames;
+    for (const auto& r : routes) {
+        if (!seenNames.insert(r.funcName).second)
+            throw std::runtime_error(
+                "Nombre de funcion duplicado: '" + r.funcName + "'. " +
+                "Cada handler debe tener un nombre unico");
+    }
+
     std::string out;
     out.reserve(1024 + routes.size() * 256);
 
@@ -103,8 +126,9 @@ std::string CodeGen::generate(const std::vector<RouteNode>& routes) {
     out += "// ── RouteTable: compile-time tuple of all routes ────────────────────────────\n";
     out += "using RouteTable = std::tuple<\n";
     for (std::size_t i = 0; i < routes.size(); ++i) {
+        // IA
         out += "    Route<\"" + toUpper(routes[i].metodo) + "\", " +
-               "\"" + routes[i].ruta + "\", " +
+               "\"" + escapeForStringLiteral(routes[i].ruta) + "\", " +
                routes[i].funcName + ">";
         if (i + 1 < routes.size()) out += ",";
         out += "\n";

@@ -6,6 +6,8 @@
 #include <istream>
 #include <string>
 #include <vector>
+// IA
+#include <mutex>
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Token types
@@ -145,9 +147,10 @@ public:
     };
 
 private:
-    static CharClass charTable[256];
-    static bool      tableReady;
-    static void      buildTable();
+    static CharClass      charTable[256];
+    // IA
+    static std::once_flag tableOnce;
+    static void           buildTable();
 
     std::string buffer;
 
