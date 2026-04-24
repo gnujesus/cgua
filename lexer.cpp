@@ -296,18 +296,18 @@ std::vector<Token> ParallelLexer::scanRange(std::size_t from,
         if (cc == CC_NEWLINE) { ++line; ++i; continue; }
 
         switch (cc) {
-            case CC_AT:     tokens.push_back({TokenType::ARROBA,    "@", line}); ++i; break;
-            case CC_LPAREN: tokens.push_back({TokenType::PAR_IZQ,   "(", line}); ++i; break;
-            case CC_RPAREN: tokens.push_back({TokenType::PAR_DER,   ")", line}); ++i; break;
-            case CC_LBRACE: tokens.push_back({TokenType::LLAVE_IZQ, "{", line}); ++i; break;
-            case CC_RBRACE: tokens.push_back({TokenType::LLAVE_DER, "}", line}); ++i; break;
-            case CC_COMMA:  tokens.push_back({TokenType::COMA,      ",", line}); ++i; break;
+            case CC_AT:     tokens.push_back({TokenType::ARROBA,    "@", line, i+1}); ++i; break;
+            case CC_LPAREN: tokens.push_back({TokenType::PAR_IZQ,   "(", line, i+1}); ++i; break;
+            case CC_RPAREN: tokens.push_back({TokenType::PAR_DER,   ")", line, i+1}); ++i; break;
+            case CC_LBRACE: tokens.push_back({TokenType::LLAVE_IZQ, "{", line, i+1}); ++i; break;
+            case CC_RBRACE: tokens.push_back({TokenType::LLAVE_DER, "}", line, i+1}); ++i; break;
+            case CC_COMMA:  tokens.push_back({TokenType::COMA,      ",", line, i+1}); ++i; break;
             case CC_COLON: {
                 if (i + 1 < to && buffer[i + 1] == ':') {
-                    tokens.push_back({TokenType::DOBLE_COLON, "::", line});
+                    tokens.push_back({TokenType::DOBLE_COLON, "::", line, i+2});
                     i += 2;
                 } else {
-                    tokens.push_back({TokenType::DOS_PUNTOS, ":", line});
+                    tokens.push_back({TokenType::DOS_PUNTOS, ":", line, i+1});
                     ++i;
                 }
                 break;
@@ -325,7 +325,7 @@ std::vector<Token> ParallelLexer::scanRange(std::size_t from,
                     if (charTable[uc] == CC_QUOTE)  { ++i; break; }
                     val += buffer[i++];
                 }
-                tokens.push_back({TokenType::STRING, std::move(val), line});
+                tokens.push_back({TokenType::STRING, std::move(val), line, i});
                 break;
             }
             case CC_DIGIT: {
@@ -334,7 +334,7 @@ std::vector<Token> ParallelLexer::scanRange(std::size_t from,
                        charTable[static_cast<unsigned char>(buffer[i])] == CC_DIGIT) ++i;
                 tokens.push_back({TokenType::NUMERO,
                                   std::string(buffer.data() + start, i - start),
-                                  line});
+                                  line, i});
                 break;
             }
             case CC_ALPHA: {
@@ -345,13 +345,13 @@ std::vector<Token> ParallelLexer::scanRange(std::size_t from,
                         cur == CC_DIGIT)) ++i;
                 tokens.push_back({TokenType::IDENTIFICADOR,
                                   std::string(buffer.data() + start, i - start),
-                                  line});
+                                  line, i});
                 break;
             }
             default:
                 tokens.push_back({TokenType::DESCONOCIDO,
                                   std::string(1, buffer[i]),
-                                  line});
+                                  line, i+1});
                 ++i;
                 break;
         }
@@ -404,7 +404,66 @@ std::vector<Token> ParallelLexer::tokenize() {
                    std::make_move_iterator(tokensB.end()));
 
     int lastLine = tokensA.empty() ? 1 : tokensA.back().linea;
-    tokensA.push_back({TokenType::FIN_DE_ARCHIVO, "", lastLine});
+    tokensA.push_back({TokenType::FIN_DE_ARCHIVO, "", lastLine, buffer.size()});
 
     return tokensA;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ParallelScanner
+// ─────────────────────────────────────────────────────────────────────────────
+
+ParallelScanner::ParallelScanner(const std::string& filepath) {
+    ParallelLexer lexer(filepath);
+    tokens = lexer.tokenize();
+    buffer = lexer.getBuffer();
+    tokPos = 0;
+    bufPos = 0;
+}
+
+Token ParallelScanner::getNextToken() {
+    if (tokPos >= tokens.size())
+        return {TokenType::FIN_DE_ARCHIVO, "", 0, 0};
+    const Token tok = tokens[tokPos++];
+    bufPos = tok.offset;
+    return tok;
+}
+
+std::string ParallelScanner::captureUntil(char openDelim, char closeDelim) {
+    std::string result;
+    int  depth    = 0;
+    bool inString = false;
+    bool escaped  = false;
+    bool found    = false;
+
+    while (bufPos < buffer.size()) {
+        char c = buffer[bufPos++];
+        if (escaped) { result += c; escaped = false; continue; }
+        if (c == '\\' && inString) { escaped = true; result += c; continue; }
+        if (inString) {
+            result += c;
+            if (c == '"') inString = false;
+        } else if (c == '"') {
+            inString = true; result += c;
+        } else if (c == openDelim) {
+            depth++; result += c;
+        } else if (c == closeDelim) {
+            if (depth == 0) { found = true; break; }
+            depth--; result += c;
+        } else {
+            result += c;
+        }
+    }
+    if (!found)
+        throw std::runtime_error(
+            "ParallelScanner: delimitador '" + std::string(1, closeDelim) + "' sin cerrar");
+
+    // Avanza tokPos mas alla de los tokens que fueron capturados verbatim
+    while (tokPos < tokens.size() && tokens[tokPos].offset <= bufPos)
+        tokPos++;
+
+    return result;
+}
+
+std::string ParallelScanner::leerParamsRaw() { return captureUntil('(', ')'); }
+std::string ParallelScanner::leerBodyRaw()   { return captureUntil('{', '}'); }

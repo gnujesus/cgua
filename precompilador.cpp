@@ -1,4 +1,3 @@
-#include <fstream>
 #include <iostream>
 #include <vector>
 #include <string>
@@ -16,16 +15,12 @@ int main(int argc, char* argv[]) {
     std::string outputFile = (argc > 2) ? argv[2] : "routes_generated.hpp";
 
     try {
-        // ── 1. Open source file ───────────────────────────────────────────────
-        std::ifstream file(inputFile);
-        if (!file.is_open())
-            throw std::runtime_error("No se pudo abrir: " + inputFile);
-
-        // ── 2. Scan + parse ───────────────────────────────────────────────────
-        // Scanner is used directly (not via IScanner) so the parser can call
-        // leerParamsRaw() / leerBodyRaw() for verbatim capture.
-        Scanner scanner(file);
-        Parser  parser(scanner);
+        // ── 1. Scan + parse (multithreaded) ──────────────────────────────────
+        // ParallelScanner carga el archivo, tokeniza con dos threads, y expone
+        // leerParamsRaw() / leerBodyRaw() para captura verbatim.
+        // Si el archivo no existe, ParallelScanner lanza la excepcion.
+        ParallelScanner scanner(inputFile);
+        Parser          parser(scanner);
 
         std::vector<RouteNode> routes = parser.parsePrograma();
 

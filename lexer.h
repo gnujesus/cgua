@@ -36,6 +36,7 @@ struct Token {
     TokenType   tipo;
     std::string valor;
     int         linea;
+    std::size_t offset = 0; // posicion en el buffer justo despues de que el token termina
 };
 
 std::string nombreToken(TokenType t);
@@ -50,6 +51,15 @@ public:
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
+// IFullScanner — extiende IScanner con raw-capture que necesita el parser
+// ─────────────────────────────────────────────────────────────────────────────
+class IFullScanner : public IScanner {
+public:
+    virtual std::string leerParamsRaw() = 0;
+    virtual std::string leerBodyRaw()   = 0;
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Scanner — streaming, single-threaded (istream-based)
 //
 // Extends IScanner with raw-capture methods that read character-by-character
@@ -57,7 +67,7 @@ public:
 // function parameter lists and bodies verbatim, preserving whitespace and
 // formatting for direct inclusion in the generated C++ output.
 // ─────────────────────────────────────────────────────────────────────────────
-class Scanner : public IScanner {
+class Scanner : public IFullScanner {
 private:
     std::istream& input;
     int           line;
@@ -80,14 +90,14 @@ public:
 
     // Reads raw characters until the matching ')' (tracking nested parens).
     // The closing ')' is consumed but NOT included in the returned string.
-    std::string leerParamsRaw();
+    std::string leerParamsRaw() override;
 
     // Reads raw characters until the matching '}' (tracking nested braces,
     // respecting string literals).
     // The closing '}' is consumed but NOT included in the returned string.
-    std::string leerBodyRaw();
+    std::string leerBodyRaw()   override;
 
-    Token getNextToken() override;
+    Token getNextToken()        override;
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -125,8 +135,8 @@ public:
 //
 //   5. Results are merged in order.  Total wall-clock scan time ≈ O(n/2).
 //
-// NOTE: The ParallelLexer is kept for backward compatibility.  The main
-// precompiler pipeline uses Scanner directly for full raw-capture support.
+// NOTE: Usado por ParallelScanner, que añade raw-capture y funciona como
+// el scanner principal del pipeline.
 // ─────────────────────────────────────────────────────────────────────────────
 class ParallelLexer {
 public:
@@ -161,6 +171,29 @@ private:
 public:
     explicit ParallelLexer(const std::string& filepath);
     std::vector<Token> tokenize();
+    const std::string& getBuffer() const { return buffer; }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ParallelScanner — tokenizacion multithreaded + raw-capture desde buffer
+//
+// Usa ParallelLexer internamente para tokenizar con 2 threads.
+// Expone leerParamsRaw() / leerBodyRaw() leyendo del buffer en memoria.
+// Reemplaza directamente a Scanner en el pipeline del precompiler.
+// ─────────────────────────────────────────────────────────────────────────────
+class ParallelScanner : public IFullScanner {
+    std::string        buffer;
+    std::vector<Token> tokens;
+    std::size_t        tokPos;
+    std::size_t        bufPos;
+
+    std::string captureUntil(char openDelim, char closeDelim);
+
+public:
+    explicit ParallelScanner(const std::string& filepath);
+    Token       getNextToken() override;
+    std::string leerParamsRaw() override;
+    std::string leerBodyRaw()   override;
 };
 
 #endif // LEXER_H

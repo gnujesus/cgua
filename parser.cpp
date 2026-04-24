@@ -1,7 +1,7 @@
 #include "parser.h"
 #include <stdexcept>
 
-Parser::Parser(Scanner& s) : scanner(s) {
+Parser::Parser(IFullScanner& s) : scanner(s) {
     advance();
 }
 

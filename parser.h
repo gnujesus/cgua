@@ -9,8 +9,8 @@
 
 class Parser {
 private:
-    Scanner& scanner;  // Scanner (not IScanner) — needed for raw-capture methods
-    Token    current;
+    IFullScanner& scanner;
+    Token         current;
 
     // Reconstruct a C++ type string from collected signature tokens.
     // sigTokens holds all tokens between the decorator's ')' and the function's '('.
@@ -21,7 +21,7 @@ private:
         int funcNameIdx);
 
 public:
-    explicit Parser(Scanner& s);
+    explicit Parser(IFullScanner& s);
 
     void  advance();
     bool  check(TokenType tipo);
